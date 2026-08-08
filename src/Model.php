@@ -15,7 +15,7 @@ use PDO;
  * OPTIONAL PACKAGE — `lombokclarion/active-record`.
  *
  * This package is explicitly isolated from the core and from the domain
- * layer (master prompt §2.6, §4.12):
+ * layer (design spec §2.6, §4.12):
  *
  *  - It lives in its own Composer package with `forbidden-layers` metadata
  *    ensuring app/Domain/** never imports it.
@@ -38,6 +38,14 @@ use PDO;
  *   $post = Post::find('abc123');
  *   $post->update(['title' => 'New title']);
  *   $post->delete();
+ *
+ * create() and the hydration helpers use `new static()`, which is only sound if
+ * every subclass keeps a no-argument-compatible constructor. That was an unwritten
+ * assumption until PHPStan was first actually run against this package; the tag
+ * below turns it into a checked contract, so a subclass that adds a required
+ * constructor argument fails analysis instead of fataling at runtime.
+ *
+ * @phpstan-consistent-constructor
  */
 abstract class Model
 {
@@ -48,7 +56,6 @@ abstract class Model
 
     /** @var array<string, mixed> */
     protected array $attributes = [];
-    private bool $exists = false;
 
     private static ?PDO $connection = null;
 
@@ -59,6 +66,16 @@ abstract class Model
     public static function setConnection(PDO $pdo): void
     {
         self::$connection = $pdo;
+    }
+
+    /**
+     * Undo setConnection() — static state that can be set must be unsettable,
+     * for tests and warm workers recycling a process (added with
+     * LaravelFlavor::disable(), which calls this).
+     */
+    public static function clearConnection(): void
+    {
+        self::$connection = null;
     }
 
     public static function getConnection(): PDO
@@ -75,6 +92,9 @@ abstract class Model
 
     public static function find(string|int $id): ?static
     {
+        // query()->where() is a self-returning fluent chain; the ModelQueryBuilder<static>
+        // template survives it, but PHPStan drops back to the base Model at first().
+        /** @var static|null $row */
         $row = static::query()->where(static::$primaryKey, '=', $id)->first();
         return $row;
     }
@@ -113,7 +133,7 @@ abstract class Model
      */
     public static function create(array $data): static
     {
-        $filtered = static::filterFillable($data);
+        $filtered = self::filterFillable($data);
         if ($filtered === []) {
             throw new ActiveRecordException('create() got no fillable attributes.');
         }
@@ -123,7 +143,6 @@ abstract class Model
 
         $instance = new static();
         $instance->attributes = [...$filtered, static::$primaryKey => $filtered[static::$primaryKey] ?? $insertId];
-        $instance->exists = true;
         return $instance;
     }
 
@@ -132,7 +151,7 @@ abstract class Model
      */
     public function update(array $data): void
     {
-        $filtered = static::filterFillable($data);
+        $filtered = self::filterFillable($data);
         if ($filtered === []) {
             return;
         }
@@ -146,7 +165,6 @@ abstract class Model
     {
         $qb = new QueryBuilder(static::getConnection(), static::$table);
         $qb->where(static::$primaryKey, '=', $this->getKey())->delete();
-        $this->exists = false;
     }
 
     // --- Relations -------------------------------------------------------
@@ -196,7 +214,6 @@ abstract class Model
     {
         $instance = new static();
         $instance->attributes = $row;
-        $instance->exists = true;
         return $instance;
     }
 

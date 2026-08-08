@@ -2,14 +2,19 @@
     "name": "lombokclarion/active-record",
     "description": "Optional ActiveRecord pattern for LombokClarion. Explicitly isolated from core and domain layer (§2.6, §4.12). MUST NOT leak into app/Domain/**.",
     "type": "library",
-    "license": "MIT",
+    "license": "Apache-2.0",
     "require": {
         "php": ">=8.3",
         "lombokclarion/persistence": "*"
     },
     "extra": {
         "lombokclarion": {
-            "forbidden-layers": ["app/Domain"]
+            "forbidden-layers": [
+                "app/Domain"
+            ]
+        },
+        "branch-alias": {
+            "dev-main": "2.2.x-dev"
         }
     },
     "autoload": {
