@@ -15,7 +15,7 @@ composer require lombokclarion/active-record
 
 ## Namespace
 
-```
+```php
 LombokClarion\ActiveRecord
 ```
 
